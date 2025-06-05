@@ -9,7 +9,93 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      encounters: {
+        Row: {
+          detected_at: string
+          distance_meters: number | null
+          id: string
+          location_lat: number | null
+          location_lng: number | null
+          user1_id: string
+          user2_id: string
+        }
+        Insert: {
+          detected_at?: string
+          distance_meters?: number | null
+          id?: string
+          location_lat?: number | null
+          location_lng?: number | null
+          user1_id: string
+          user2_id: string
+        }
+        Update: {
+          detected_at?: string
+          distance_meters?: number | null
+          id?: string
+          location_lat?: number | null
+          location_lng?: number | null
+          user1_id?: string
+          user2_id?: string
+        }
+        Relationships: []
+      }
+      interests: {
+        Row: {
+          created_at: string
+          from_user_id: string
+          id: string
+          to_user_id: string
+        }
+        Insert: {
+          created_at?: string
+          from_user_id: string
+          id?: string
+          to_user_id: string
+        }
+        Update: {
+          created_at?: string
+          from_user_id?: string
+          id?: string
+          to_user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          bio: string | null
+          created_at: string
+          id: string
+          interests: string[] | null
+          is_visible: boolean | null
+          name: string
+          photo: string | null
+          updated_at: string
+          visibility_expires_at: string | null
+        }
+        Insert: {
+          bio?: string | null
+          created_at?: string
+          id: string
+          interests?: string[] | null
+          is_visible?: boolean | null
+          name: string
+          photo?: string | null
+          updated_at?: string
+          visibility_expires_at?: string | null
+        }
+        Update: {
+          bio?: string | null
+          created_at?: string
+          id?: string
+          interests?: string[] | null
+          is_visible?: boolean | null
+          name?: string
+          photo?: string | null
+          updated_at?: string
+          visibility_expires_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

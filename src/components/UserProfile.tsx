@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 interface UserProfileProps {
   user: any;
@@ -14,18 +16,54 @@ interface UserProfileProps {
 }
 
 const UserProfile: React.FC<UserProfileProps> = ({ user, onUpdateUser }) => {
+  const { user: authUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [editedUser, setEditedUser] = useState(user);
   const [newInterest, setNewInterest] = useState('');
+  const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
-  const handleSave = () => {
-    onUpdateUser(editedUser);
-    setIsEditing(false);
-    toast({
-      title: "Profile updated",
-      description: "Your changes have been saved successfully."
-    });
+  const handleSave = async () => {
+    if (!authUser) return;
+    
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: editedUser.name,
+          bio: editedUser.bio,
+          interests: editedUser.interests,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', authUser.id);
+
+      if (error) {
+        console.error('Error updating profile:', error);
+        toast({
+          title: "Error",
+          description: "Failed to update profile. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      onUpdateUser(editedUser);
+      setIsEditing(false);
+      toast({
+        title: "Profile updated",
+        description: "Your changes have been saved successfully."
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred.",
+        variant: "destructive"
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const addInterest = () => {
@@ -52,7 +90,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpdateUser }) => {
           <Avatar className="w-24 h-24 mx-auto mb-4">
             <AvatarImage src={editedUser.photo} />
             <AvatarFallback className="bg-gradient-to-r from-purple-400 to-pink-400 text-white text-2xl">
-              {editedUser.name[0]}
+              {editedUser.name?.[0] || 'U'}
             </AvatarFallback>
           </Avatar>
           
@@ -82,7 +120,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpdateUser }) => {
         <div className="mb-6">
           <h3 className="font-semibold mb-3">Interests</h3>
           <div className="flex flex-wrap gap-2 mb-3">
-            {editedUser.interests.map((interest: string) => (
+            {editedUser.interests?.map((interest: string) => (
               <Badge 
                 key={interest} 
                 variant="secondary" 
@@ -110,15 +148,30 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpdateUser }) => {
         <div className="flex space-x-3">
           {isEditing ? (
             <>
-              <Button onClick={handleSave} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500">
-                Save Changes
+              <Button 
+                onClick={handleSave} 
+                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500"
+                disabled={saving}
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
               </Button>
-              <Button onClick={() => setIsEditing(false)} variant="outline" className="flex-1">
+              <Button 
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditedUser(user);
+                }} 
+                variant="outline" 
+                className="flex-1"
+                disabled={saving}
+              >
                 Cancel
               </Button>
             </>
           ) : (
-            <Button onClick={() => setIsEditing(true)} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500">
+            <Button 
+              onClick={() => setIsEditing(true)} 
+              className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500"
+            >
               Edit Profile
             </Button>
           )}

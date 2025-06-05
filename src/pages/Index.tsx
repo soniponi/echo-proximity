@@ -6,8 +6,11 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, EyeOff, MessageCircle, User } from 'lucide-react';
+import { Eye, EyeOff, MessageCircle, User, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import ProximityScanner from '@/components/ProximityScanner';
 import UserProfile from '@/components/UserProfile';
 import NearbyUsers from '@/components/NearbyUsers';
@@ -15,18 +18,81 @@ import ChatInterface from '@/components/ChatInterface';
 import SettingsPanel from '@/components/SettingsPanel';
 
 const Index = () => {
+  const { user, loading, signOut } = useAuth();
+  const navigate = useNavigate();
   const [isVisible, setIsVisible] = useState(false);
-  const [currentUser, setCurrentUser] = useState({
-    id: 'user_123',
-    name: 'Alex Johnson',
-    photo: '',
-    bio: 'Love meeting new people and exploring the city!',
-    interests: ['Photography', 'Coffee', 'Travel', 'Music']
-  });
+  const [currentUser, setCurrentUser] = useState(null);
   const [nearbyUsers, setNearbyUsers] = useState([]);
   const [matches, setMatches] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const { toast } = useToast();
+
+  // Redirect to auth if not logged in
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/auth');
+    }
+  }, [user, loading, navigate]);
+
+  // Load user profile data
+  useEffect(() => {
+    if (user) {
+      loadUserProfile();
+    }
+  }, [user]);
+
+  const loadUserProfile = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error loading profile:', error);
+        return;
+      }
+
+      setCurrentUser(data);
+      setIsVisible(data.is_visible || false);
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  };
+
+  // Update visibility in database
+  const updateVisibility = async (visible: boolean) => {
+    if (!user) return;
+
+    try {
+      const visibilityExpiresAt = visible 
+        ? new Date(Date.now() + 15 * 60 * 1000).toISOString() 
+        : null;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          is_visible: visible,
+          visibility_expires_at: visibilityExpiresAt
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('Error updating visibility:', error);
+        toast({
+          title: "Error",
+          description: "Failed to update visibility setting.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setCurrentUser(prev => prev ? { ...prev, is_visible: visible } : null);
+    } catch (error) {
+      console.error('Error updating visibility:', error);
+    }
+  };
 
   // Simulate proximity detection
   useEffect(() => {
@@ -68,7 +134,7 @@ const Index = () => {
   useEffect(() => {
     if (isVisible) {
       const timer = setTimeout(() => {
-        setIsVisible(false);
+        handleVisibilityToggle(false);
         toast({
           title: "Visibility turned off",
           description: "You've been automatically hidden for privacy. Turn on visibility to continue meeting people."
@@ -79,8 +145,10 @@ const Index = () => {
     }
   }, [isVisible, toast]);
 
-  const handleVisibilityToggle = (checked: boolean) => {
+  const handleVisibilityToggle = async (checked: boolean) => {
     setIsVisible(checked);
+    await updateVisibility(checked);
+    
     if (checked) {
       toast({
         title: "You're now visible!",
@@ -115,6 +183,28 @@ const Index = () => {
     }
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
+  };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-pulse mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if no user (will redirect)
+  if (!user || !currentUser) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50">
       <div className="container mx-auto px-4 py-6 max-w-md">
@@ -136,6 +226,14 @@ const Index = () => {
               onCheckedChange={handleVisibilityToggle}
               className="data-[state=checked]:bg-green-500"
             />
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleSignOut}
+              className="ml-2"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
           </div>
         </div>
 
