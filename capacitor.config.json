@@ -1,6 +1,6 @@
 {
   "appId": "com.lovable.nearbyapp",
-  "appName": "NearBy - Social Proximity App",
+  "appName": "NearBy",
   "webDir": "dist",
   "server": {
     "cleartext": true
