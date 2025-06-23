@@ -2,7 +2,7 @@
 import { CapacitorConfig } from '@capacitor/core';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.4cb4f51f72e34b149c87839da12e883a',
+  appId: 'com.lovable.nearbyapp',
   appName: 'NearBy - Social Proximity App',
   webDir: 'dist',
   server: {
@@ -27,5 +27,3 @@ const config: CapacitorConfig = {
     },
   },
 };
-
-export default config;
