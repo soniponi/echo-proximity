@@ -3,7 +3,6 @@
   "appName": "NearBy - Social Proximity App",
   "webDir": "dist",
   "server": {
-    "url": "https://4cb4f51f-72e3-4b14-9c87-839da12e883a.lovableproject.com?forceHideBadge=true",
     "cleartext": true
   },
   "plugins": {
