@@ -1,5 +1,4 @@
-
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { LocationService, LocationData } from '@/services/locationService';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,23 +21,39 @@ export const useProximityScanner = () => {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
-  const [isStarting, setIsStarting] = useState(false); // Prevent multiple simultaneous starts
+  const [isStarting, setIsStarting] = useState(false);
+  const startingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const locationService = LocationService.getInstance();
+
+  // Clear starting timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (startingTimeoutRef.current) {
+        clearTimeout(startingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const requestLocationPermission = useCallback(async () => {
     console.log('Requesting location permission...');
-    const hasPermission = await locationService.requestPermissions();
-    setLocationPermission(hasPermission);
-    
-    if (!hasPermission) {
-      toast({
-        title: "Location Permission Required",
-        description: "Please enable location services to find people nearby.",
-        variant: "destructive"
-      });
+    try {
+      const hasPermission = await locationService.requestPermissions();
+      setLocationPermission(hasPermission);
+      
+      if (!hasPermission) {
+        toast({
+          title: "Location Permission Required",
+          description: "Please enable location services to find people nearby.",
+          variant: "destructive"
+        });
+      }
+      
+      return hasPermission;
+    } catch (error) {
+      console.error('Error requesting location permission:', error);
+      setLocationPermission(false);
+      return false;
     }
-    
-    return hasPermission;
   }, [locationService, toast]);
 
   const startScanning = useCallback(async () => {
@@ -47,13 +62,20 @@ export const useProximityScanner = () => {
       return false;
     }
 
-    setIsStarting(true);
     console.log('Starting proximity scanning...');
+    setIsStarting(true);
+
+    // Set a timeout to reset isStarting if the process takes too long
+    startingTimeoutRef.current = setTimeout(() => {
+      console.log('Starting timeout - resetting isStarting');
+      setIsStarting(false);
+    }, 10000); // 10 second timeout
     
     try {
       // Request location permission first
       const hasPermission = await requestLocationPermission();
       if (!hasPermission) {
+        if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
         setIsStarting(false);
         return false;
       }
@@ -66,6 +88,7 @@ export const useProximityScanner = () => {
           description: "Unable to get your current location. Please check your settings.",
           variant: "destructive"
         });
+        if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
         setIsStarting(false);
         return false;
       }
@@ -77,6 +100,7 @@ export const useProximityScanner = () => {
       const trackingStarted = await locationService.startLocationTracking(user.id);
       if (!trackingStarted) {
         setIsScanning(false);
+        if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
         setIsStarting(false);
         return false;
       }
@@ -89,11 +113,13 @@ export const useProximityScanner = () => {
         description: "Looking for people nearby. You'll be notified when someone is found.",
       });
 
+      if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
       setIsStarting(false);
       return true;
     } catch (error) {
       console.error('Error starting proximity scanning:', error);
       setIsScanning(false);
+      if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
       setIsStarting(false);
       toast({
         title: "Error",
@@ -107,8 +133,14 @@ export const useProximityScanner = () => {
   const stopScanning = useCallback(async () => {
     console.log('Stopping proximity scanning...');
     
+    // Clear any pending timeout
+    if (startingTimeoutRef.current) {
+      clearTimeout(startingTimeoutRef.current);
+    }
+    
     await locationService.stopLocationTracking();
     setIsScanning(false);
+    setIsStarting(false); // Reset starting state
     setNearbyUsers([]);
     setCurrentLocation(null);
 

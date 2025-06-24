@@ -1,4 +1,3 @@
-
 import { Geolocation } from '@capacitor/geolocation';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -13,6 +12,7 @@ export class LocationService {
   private watchId: string | null = null;
   private isTracking = false;
   private permissionGranted: boolean | null = null;
+  private permissionTimeout: NodeJS.Timeout | null = null;
 
   static getInstance(): LocationService {
     if (!LocationService.instance) {
@@ -29,13 +29,32 @@ export class LocationService {
 
     try {
       console.log('Requesting location permissions...');
-      const permissions = await Geolocation.requestPermissions();
+      
+      // Add timeout for permission request
+      const permissionPromise = Geolocation.requestPermissions();
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        this.permissionTimeout = setTimeout(() => {
+          reject(new Error('Permission request timeout'));
+        }, 8000); // 8 second timeout
+      });
+
+      const permissions = await Promise.race([permissionPromise, timeoutPromise]);
+      
+      if (this.permissionTimeout) {
+        clearTimeout(this.permissionTimeout);
+        this.permissionTimeout = null;
+      }
+      
       console.log('Location permissions result:', permissions);
       
       this.permissionGranted = permissions.location === 'granted';
       return this.permissionGranted;
     } catch (error) {
       console.error('Error requesting location permissions:', error);
+      if (this.permissionTimeout) {
+        clearTimeout(this.permissionTimeout);
+        this.permissionTimeout = null;
+      }
       this.permissionGranted = false;
       return false;
     }
@@ -170,5 +189,9 @@ export class LocationService {
   // Reset permission cache (useful for testing)
   resetPermissions(): void {
     this.permissionGranted = null;
+    if (this.permissionTimeout) {
+      clearTimeout(this.permissionTimeout);
+      this.permissionTimeout = null;
+    }
   }
 }
