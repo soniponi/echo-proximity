@@ -22,9 +22,11 @@ export const useProximityScanner = () => {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
+  const [isStarting, setIsStarting] = useState(false); // Prevent multiple simultaneous starts
   const locationService = LocationService.getInstance();
 
   const requestLocationPermission = useCallback(async () => {
+    console.log('Requesting location permission...');
     const hasPermission = await locationService.requestPermissions();
     setLocationPermission(hasPermission);
     
@@ -40,45 +42,67 @@ export const useProximityScanner = () => {
   }, [locationService, toast]);
 
   const startScanning = useCallback(async () => {
-    if (!user || isScanning) return false;
+    if (!user || isScanning || isStarting) {
+      console.log('Cannot start scanning:', { user: !!user, isScanning, isStarting });
+      return false;
+    }
 
+    setIsStarting(true);
     console.log('Starting proximity scanning...');
     
-    // Request location permission first
-    const hasPermission = await requestLocationPermission();
-    if (!hasPermission) return false;
+    try {
+      // Request location permission first
+      const hasPermission = await requestLocationPermission();
+      if (!hasPermission) {
+        setIsStarting(false);
+        return false;
+      }
 
-    // Get current location
-    const location = await locationService.getCurrentLocation();
-    if (!location) {
+      // Get current location
+      const location = await locationService.getCurrentLocation();
+      if (!location) {
+        toast({
+          title: "Location Error",
+          description: "Unable to get your current location. Please check your settings.",
+          variant: "destructive"
+        });
+        setIsStarting(false);
+        return false;
+      }
+
+      setCurrentLocation(location);
+      setIsScanning(true);
+
+      // Start location tracking
+      const trackingStarted = await locationService.startLocationTracking(user.id);
+      if (!trackingStarted) {
+        setIsScanning(false);
+        setIsStarting(false);
+        return false;
+      }
+
+      // Initial scan for nearby users
+      await scanForNearbyUsers(location);
+
       toast({
-        title: "Location Error",
-        description: "Unable to get your current location. Please check your settings.",
+        title: "Scanning Started",
+        description: "Looking for people nearby. You'll be notified when someone is found.",
+      });
+
+      setIsStarting(false);
+      return true;
+    } catch (error) {
+      console.error('Error starting proximity scanning:', error);
+      setIsScanning(false);
+      setIsStarting(false);
+      toast({
+        title: "Error",
+        description: "Failed to start proximity scanning. Please try again.",
         variant: "destructive"
       });
       return false;
     }
-
-    setCurrentLocation(location);
-    setIsScanning(true);
-
-    // Start location tracking
-    const trackingStarted = await locationService.startLocationTracking(user.id);
-    if (!trackingStarted) {
-      setIsScanning(false);
-      return false;
-    }
-
-    // Initial scan for nearby users
-    await scanForNearbyUsers(location);
-
-    toast({
-      title: "Scanning Started",
-      description: "Looking for people nearby. You'll be notified when someone is found.",
-    });
-
-    return true;
-  }, [user, isScanning, locationService, requestLocationPermission, toast]);
+  }, [user, isScanning, isStarting, locationService, requestLocationPermission, toast]);
 
   const stopScanning = useCallback(async () => {
     console.log('Stopping proximity scanning...');
