@@ -6,11 +6,12 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, EyeOff, MessageCircle, User, LogOut } from 'lucide-react';
+import { Eye, EyeOff, MessageCircle, User, LogOut, MapPin, Wifi } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useProximityScanner } from '@/hooks/useProximityScanner';
 import ProximityScanner from '@/components/ProximityScanner';
 import UserProfile from '@/components/UserProfile';
 import NearbyUsers from '@/components/NearbyUsers';
@@ -20,12 +21,21 @@ import SettingsPanel from '@/components/SettingsPanel';
 const Index = () => {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
-  const [isVisible, setIsVisible] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-  const [nearbyUsers, setNearbyUsers] = useState([]);
   const [matches, setMatches] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const { toast } = useToast();
+
+  // Use the new proximity scanner hook
+  const {
+    isScanning,
+    nearbyUsers,
+    currentLocation,
+    locationPermission,
+    startScanning,
+    stopScanning,
+    requestLocationPermission
+  } = useProximityScanner();
 
   // Redirect to auth if not logged in
   useEffect(() => {
@@ -55,13 +65,12 @@ const Index = () => {
       }
 
       setCurrentUser(data);
-      setIsVisible(data.is_visible || false);
     } catch (error) {
       console.error('Error loading profile:', error);
     }
   };
 
-  // Update visibility in database
+  // Update visibility and start/stop scanning
   const updateVisibility = async (visible: boolean) => {
     if (!user) return;
 
@@ -94,45 +103,31 @@ const Index = () => {
     }
   };
 
-  // Simulate proximity detection
-  useEffect(() => {
-    if (isVisible) {
-      const interval = setInterval(() => {
-        // Simulate discovering nearby users
-        const mockUsers = [
-          {
-            id: 'user_456',
-            name: 'Sarah Chen',
-            photo: '',
-            bio: 'Designer who loves art galleries',
-            interests: ['Design', 'Art', 'Coffee'],
-            distance: 15,
-            lastSeen: new Date(),
-            mutualInterest: false
-          },
-          {
-            id: 'user_789',
-            name: 'Mike Rodriguez',
-            photo: '',
-            bio: 'Musician always looking for jam sessions',
-            interests: ['Music', 'Guitar', 'Photography'],
-            distance: 23,
-            lastSeen: new Date(),
-            mutualInterest: false
-          }
-        ];
-        setNearbyUsers(mockUsers);
-      }, 3000);
-
-      return () => clearInterval(interval);
+  const handleVisibilityToggle = async (checked: boolean) => {
+    if (checked) {
+      // Start GPS scanning
+      const scanningStarted = await startScanning();
+      if (scanningStarted) {
+        await updateVisibility(true);
+        toast({
+          title: "You're now visible!",
+          description: "Others nearby can now see your profile. GPS scanning is active."
+        });
+      }
     } else {
-      setNearbyUsers([]);
+      // Stop scanning and hide
+      await stopScanning();
+      await updateVisibility(false);
+      toast({
+        title: "You're now hidden",
+        description: "Your profile is no longer visible to others nearby."
+      });
     }
-  }, [isVisible]);
+  };
 
   // Auto-hide after 15 minutes
   useEffect(() => {
-    if (isVisible) {
+    if (isScanning) {
       const timer = setTimeout(() => {
         handleVisibilityToggle(false);
         toast({
@@ -143,24 +138,7 @@ const Index = () => {
 
       return () => clearTimeout(timer);
     }
-  }, [isVisible, toast]);
-
-  const handleVisibilityToggle = async (checked: boolean) => {
-    setIsVisible(checked);
-    await updateVisibility(checked);
-    
-    if (checked) {
-      toast({
-        title: "You're now visible!",
-        description: "Others nearby can now see your profile. You'll be hidden automatically in 15 minutes."
-      });
-    } else {
-      toast({
-        title: "You're now hidden",
-        description: "Your profile is no longer visible to others nearby."
-      });
-    }
-  };
+  }, [isScanning]);
 
   const handleInterest = (userId: string) => {
     console.log('Showing interest in user:', userId);
@@ -184,6 +162,7 @@ const Index = () => {
   };
 
   const handleSignOut = async () => {
+    await stopScanning(); // Stop scanning on sign out
     await signOut();
     navigate('/auth');
   };
@@ -220,9 +199,9 @@ const Index = () => {
           </div>
           
           <div className="flex items-center space-x-2">
-            {isVisible ? <Eye className="w-4 h-4 text-green-500" /> : <EyeOff className="w-4 h-4 text-gray-400" />}
+            {isScanning ? <Eye className="w-4 h-4 text-green-500" /> : <EyeOff className="w-4 h-4 text-gray-400" />}
             <Switch 
-              checked={isVisible} 
+              checked={isScanning} 
               onCheckedChange={handleVisibilityToggle}
               className="data-[state=checked]:bg-green-500"
             />
@@ -242,22 +221,51 @@ const Index = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Your status</p>
-              <p className="font-semibold text-lg">
-                {isVisible ? (
-                  <span className="text-green-600">Visible to nearby people</span>
+              <p className="font-semibold text-lg flex items-center gap-2">
+                {isScanning ? (
+                  <>
+                    <span className="text-green-600">Visible & Scanning</span>
+                    <MapPin className="w-4 h-4 text-green-600" />
+                  </>
                 ) : (
-                  <span className="text-gray-500">Hidden from others</span>
+                  <span className="text-gray-500">Hidden</span>
                 )}
               </p>
+              {currentLocation && isScanning && (
+                <p className="text-xs text-gray-500">
+                  Accuracy: {Math.round(currentLocation.accuracy)}m
+                </p>
+              )}
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-600">Nearby people</p>
-              <p className="font-bold text-2xl text-purple-600">
+              <p className="font-bold text-2xl text-purple-600 flex items-center gap-1">
                 {nearbyUsers.length}
+                {isScanning && <Wifi className="w-4 h-4 text-green-500" />}
               </p>
             </div>
           </div>
         </Card>
+
+        {/* Location Permission Alert */}
+        {locationPermission === false && (
+          <Card className="p-4 mb-6 bg-yellow-50 border-yellow-200">
+            <div className="flex items-center space-x-3">
+              <MapPin className="w-5 h-5 text-yellow-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-yellow-800">Location Permission Required</p>
+                <p className="text-xs text-yellow-700">Enable location services to find people nearby</p>
+              </div>
+              <Button 
+                size="sm" 
+                onClick={requestLocationPermission}
+                className="bg-yellow-600 hover:bg-yellow-700"
+              >
+                Enable
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="discover" className="w-full">
@@ -270,9 +278,11 @@ const Index = () => {
 
           <TabsContent value="discover" className="mt-6">
             <ProximityScanner 
-              isVisible={isVisible} 
+              isVisible={isScanning} 
               nearbyUsers={nearbyUsers}
               onShowInterest={handleInterest}
+              hasLocationPermission={locationPermission}
+              currentLocation={currentLocation}
             />
             <NearbyUsers 
               users={nearbyUsers} 

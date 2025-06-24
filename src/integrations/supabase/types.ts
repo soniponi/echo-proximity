@@ -64,9 +64,13 @@ export type Database = {
         Row: {
           bio: string | null
           created_at: string
+          current_lat: number | null
+          current_lng: number | null
           id: string
           interests: string[] | null
           is_visible: boolean | null
+          location_accuracy: number | null
+          location_updated_at: string | null
           name: string
           photo: string | null
           updated_at: string
@@ -75,9 +79,13 @@ export type Database = {
         Insert: {
           bio?: string | null
           created_at?: string
+          current_lat?: number | null
+          current_lng?: number | null
           id: string
           interests?: string[] | null
           is_visible?: boolean | null
+          location_accuracy?: number | null
+          location_updated_at?: string | null
           name: string
           photo?: string | null
           updated_at?: string
@@ -86,9 +94,13 @@ export type Database = {
         Update: {
           bio?: string | null
           created_at?: string
+          current_lat?: number | null
+          current_lng?: number | null
           id?: string
           interests?: string[] | null
           is_visible?: boolean | null
+          location_accuracy?: number | null
+          location_updated_at?: string | null
           name?: string
           photo?: string | null
           updated_at?: string
@@ -101,7 +113,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      find_nearby_users: {
+        Args: {
+          user_lat: number
+          user_lng: number
+          radius_meters?: number
+          requesting_user_id?: string
+        }
+        Returns: {
+          id: string
+          name: string
+          bio: string
+          photo: string
+          interests: string[]
+          distance_meters: number
+          last_seen: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
