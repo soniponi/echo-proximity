@@ -46,12 +46,6 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs your location to detect nearby users and devices.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>This app needs your location even when in the background to ensure continuous proximity detection.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app uses your location to provide full proximity-based functionality.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Echo needs location access to find nearby users</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Echo needs location access to connect you with nearby people</string>
@@ -59,6 +53,5 @@
 	<string>Echo uses Bluetooth to detect nearby users for social connections</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Echo uses Bluetooth to detect nearby users for social connections</string>
-
 </dict>
 </plist>
