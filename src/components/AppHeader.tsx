@@ -26,22 +26,27 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         </h1>
       </div>
       
-      <div className="flex items-center space-x-2">
+      {/* Centered visibility toggle for easier mobile access */}
+      <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 border border-white/20">
         {isScanning ? <Eye className="w-4 h-4 text-green-500" /> : <EyeOff className="w-4 h-4 text-gray-400" />}
         <Switch 
           checked={isScanning} 
           onCheckedChange={onVisibilityToggle}
           className="data-[state=checked]:bg-green-500"
         />
-        <Button 
-          variant="outline" 
-          size="sm"
-          onClick={onSignOut}
-          className="ml-2"
-        >
-          <LogOut className="w-4 h-4" />
-        </Button>
+        <span className="text-sm font-medium text-gray-700">
+          {isScanning ? 'Visibile' : 'Nascosto'}
+        </span>
       </div>
+      
+      <Button 
+        variant="outline" 
+        size="sm"
+        onClick={onSignOut}
+        className="bg-white/80 backdrop-blur-sm border-white/20"
+      >
+        <LogOut className="w-4 h-4" />
+      </Button>
     </div>
   );
 };
