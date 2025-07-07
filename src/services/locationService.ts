@@ -1,3 +1,4 @@
+
 import { Geolocation } from '@capacitor/geolocation';
 
 export interface LocationData {
@@ -65,23 +66,28 @@ class LocationServiceClass {
     }
 
     try {
+      // Fixed: Geolocation.watchPosition expects options and success callback only
       this.watchId = await Geolocation.watchPosition(
         {
           enableHighAccuracy: true,
           timeout: 30000,
           maximumAge: 60000
         },
-        (position) => {
-          console.log('Location updated:', position);
-          this.updateLocationInDatabase(userId, {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            timestamp: position.timestamp
-          });
-        },
-        (error) => {
-          console.error('Location tracking error:', error);
+        (position, error) => {
+          if (error) {
+            console.error('Location tracking error:', error);
+            return;
+          }
+          
+          if (position) {
+            console.log('Location updated:', position);
+            this.updateLocationInDatabase(userId, {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              timestamp: position.timestamp
+            });
+          }
         }
       );
 
@@ -95,8 +101,8 @@ class LocationServiceClass {
 
   async stopLocationTracking(): Promise<void> {
     if (this.watchId) {
-      // Fixed: Geolocation.clearWatch expects only the watchId string
-      await Geolocation.clearWatch(this.watchId);
+      // Fixed: Geolocation.clearWatch expects a ClearWatchOptions object
+      await Geolocation.clearWatch({ id: this.watchId });
       this.watchId = null;
     }
     this.isTracking = false;
