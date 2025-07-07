@@ -1,3 +1,4 @@
+
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -46,12 +47,18 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Echo needs location access to find nearby users</string>
+	<string>NearBy ha bisogno dell'accesso alla posizione per trovare utenti nelle vicinanze</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Echo needs location access to connect you with nearby people</string>
+	<string>NearBy ha bisogno dell'accesso continuo alla posizione per connetterti con persone vicine anche quando l'app è in background</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Echo uses Bluetooth to detect nearby users for social connections</string>
+	<string>NearBy usa il Bluetooth per rilevare utenti vicini per connessioni sociali</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Echo uses Bluetooth to detect nearby users for social connections</string>
+	<string>NearBy usa il Bluetooth per rilevare utenti vicini per connessioni sociali</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>background-fetch</string>
+		<string>background-processing</string>
+	</array>
 </dict>
 </plist>

@@ -1,197 +1,174 @@
-import { Geolocation } from '@capacitor/geolocation';
-import { supabase } from '@/integrations/supabase/client';
+
+import { Geolocation, Position, PermissionStatus } from '@capacitor/geolocation';
 
 export interface LocationData {
   latitude: number;
   longitude: number;
   accuracy: number;
+  timestamp: number;
 }
 
-export class LocationService {
-  private static instance: LocationService;
+class LocationService {
   private watchId: string | null = null;
-  private isTracking = false;
-  private permissionGranted: boolean | null = null;
-  private permissionTimeout: NodeJS.Timeout | null = null;
+  private lastKnownPosition: LocationData | null = null;
+  private listeners: Set<(location: LocationData) => void> = new Set();
 
-  static getInstance(): LocationService {
-    if (!LocationService.instance) {
-      LocationService.instance = new LocationService();
-    }
-    return LocationService.instance;
-  }
-
-  async requestPermissions(): Promise<boolean> {
-    // Return cached result if we already know the permission status
-    if (this.permissionGranted !== null) {
-      return this.permissionGranted;
-    }
-
+  async requestPermission(): Promise<boolean> {
     try {
       console.log('Requesting location permissions...');
+      const permission = await Geolocation.requestPermissions();
+      console.log('Permission result:', permission);
       
-      // Add timeout for permission request
-      const permissionPromise = Geolocation.requestPermissions();
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        this.permissionTimeout = setTimeout(() => {
-          reject(new Error('Permission request timeout'));
-        }, 8000); // 8 second timeout
-      });
-
-      const permissions = await Promise.race([permissionPromise, timeoutPromise]);
-      
-      if (this.permissionTimeout) {
-        clearTimeout(this.permissionTimeout);
-        this.permissionTimeout = null;
-      }
-      
-      console.log('Location permissions result:', permissions);
-      
-      this.permissionGranted = permissions.location === 'granted';
-      return this.permissionGranted;
+      return permission.location === 'granted';
     } catch (error) {
-      console.error('Error requesting location permissions:', error);
-      if (this.permissionTimeout) {
-        clearTimeout(this.permissionTimeout);
-        this.permissionTimeout = null;
-      }
-      this.permissionGranted = false;
+      console.error('Error requesting location permission:', error);
       return false;
     }
   }
 
-  async getCurrentLocation(): Promise<LocationData | null> {
+  async checkPermission(): Promise<boolean> {
     try {
-      console.log('Getting current location...');
-      const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 60000 // 1 minute
-      });
-
-      console.log('Location obtained:', position);
-      return {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy
-      };
+      const permission = await Geolocation.checkPermissions();
+      return permission.location === 'granted';
     } catch (error) {
-      console.error('Error getting current location:', error);
-      return null;
+      console.error('Error checking location permission:', error);
+      return false;
     }
   }
 
-  async startLocationTracking(userId: string): Promise<boolean> {
-    if (this.isTracking) {
-      console.log('Already tracking location');
-      return true;
-    }
-
+  async getCurrentPosition(): Promise<LocationData | null> {
     try {
-      console.log('Starting location tracking for user:', userId);
-      
-      // Don't request permissions again if we already have them
-      if (this.permissionGranted !== true) {
-        const hasPermission = await this.requestPermissions();
-        if (!hasPermission) {
-          console.log('Location permission denied');
-          return false;
-        }
+      const hasPermission = await this.checkPermission();
+      if (!hasPermission) {
+        console.log('No location permission available');
+        return null;
       }
 
+      console.log('Getting current position...');
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 30000
+      });
+
+      const locationData: LocationData = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy || 0,
+        timestamp: position.timestamp
+      };
+
+      this.lastKnownPosition = locationData;
+      return locationData;
+    } catch (error) {
+      console.error('Error getting current position:', error);
+      return this.lastKnownPosition;
+    }
+  }
+
+  async startWatching(): Promise<boolean> {
+    try {
+      const hasPermission = await this.checkPermission();
+      if (!hasPermission) {
+        console.log('Cannot start watching: no permission');
+        return false;
+      }
+
+      if (this.watchId) {
+        console.log('Already watching location');
+        return true;
+      }
+
+      console.log('Starting location watch...');
       this.watchId = await Geolocation.watchPosition(
         {
           enableHighAccuracy: true,
-          timeout: 30000,
-          maximumAge: 60000 // 1 minute
+          timeout: 10000,
+          maximumAge: 5000
         },
-        (position) => {
+        (position: Position | null, err?: any) => {
+          if (err) {
+            console.error('Location watch error:', err);
+            return;
+          }
+
           if (position) {
-            console.log('Location update received:', position);
-            this.updateUserLocation(userId, {
+            const locationData: LocationData = {
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
-              accuracy: position.coords.accuracy
-            });
+              accuracy: position.coords.accuracy || 0,
+              timestamp: position.timestamp
+            };
+
+            this.lastKnownPosition = locationData;
+            this.notifyListeners(locationData);
           }
         }
       );
 
-      this.isTracking = true;
-      console.log('Location tracking started with watchId:', this.watchId);
+      console.log('Location watch started with ID:', this.watchId);
       return true;
     } catch (error) {
-      console.error('Error starting location tracking:', error);
+      console.error('Error starting location watch:', error);
       return false;
     }
   }
 
-  async stopLocationTracking(): Promise<void> {
+  async stopWatching(): Promise<void> {
     if (this.watchId) {
+      console.log('Stopping location watch...');
       try {
         await Geolocation.clearWatch({ id: this.watchId });
-        console.log('Stopped location tracking');
+        this.watchId = null;
+        console.log('Location watch stopped');
       } catch (error) {
-        console.error('Error stopping location tracking:', error);
+        console.error('Error stopping location watch:', error);
       }
-      this.watchId = null;
     }
-    this.isTracking = false;
   }
 
-  private async updateUserLocation(userId: string, location: LocationData): Promise<void> {
+  addLocationListener(callback: (location: LocationData) => void): () => void {
+    this.listeners.add(callback);
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  private notifyListeners(location: LocationData): void {
+    this.listeners.forEach(callback => {
+      try {
+        callback(location);
+      } catch (error) {
+        console.error('Error in location listener:', error);
+      }
+    });
+  }
+
+  getLastKnownPosition(): LocationData | null {
+    return this.lastKnownPosition;
+  }
+
+  // Request background location permission for iOS
+  async requestBackgroundPermission(): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          current_lat: location.latitude,
-          current_lng: location.longitude,
-          location_accuracy: location.accuracy,
-          location_updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
-
-      if (error) {
-        console.error('Error updating user location:', error);
-      } else {
-        console.log('Location updated successfully');
-      }
-    } catch (error) {
-      console.error('Error updating user location:', error);
-    }
-  }
-
-  async findNearbyUsers(
-    userId: string, 
-    location: LocationData, 
-    radiusMeters: number = 100
-  ): Promise<any[]> {
-    try {
-      const { data, error } = await supabase.rpc('find_nearby_users', {
-        user_lat: location.latitude,
-        user_lng: location.longitude,
-        radius_meters: radiusMeters,
-        requesting_user_id: userId
-      });
-
-      if (error) {
-        console.error('Error finding nearby users:', error);
-        return [];
+      // First check if we have when-in-use permission
+      const permission = await Geolocation.checkPermissions();
+      if (permission.location !== 'granted') {
+        const newPermission = await Geolocation.requestPermissions();
+        if (newPermission.location !== 'granted') {
+          return false;
+        }
       }
 
-      return data || [];
+      // For background location, we need to request it separately
+      // This will prompt the user to change to "Always" in iOS settings
+      console.log('Background location access requires "Always" permission in iOS Settings');
+      return true;
     } catch (error) {
-      console.error('Error finding nearby users:', error);
-      return [];
-    }
-  }
-
-  // Reset permission cache (useful for testing)
-  resetPermissions(): void {
-    this.permissionGranted = null;
-    if (this.permissionTimeout) {
-      clearTimeout(this.permissionTimeout);
-      this.permissionTimeout = null;
+      console.error('Error requesting background permission:', error);
+      return false;
     }
   }
 }
+
+export const locationService = new LocationService();

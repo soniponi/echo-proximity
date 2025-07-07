@@ -48,6 +48,8 @@ const Index = () => {
   useEffect(() => {
     if (user) {
       loadUserProfile();
+      loadMatches();
+      subscribeToMatches();
     }
   }, [user]);
 
@@ -68,6 +70,80 @@ const Index = () => {
     } catch (error) {
       console.error('Error loading profile:', error);
     }
+  };
+
+  const loadMatches = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('matches')
+        .select(`
+          *,
+          user1_profile:profiles!matches_user1_id_fkey(id, name, bio, photo),
+          user2_profile:profiles!matches_user2_id_fkey(id, name, bio, photo)
+        `)
+        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`);
+
+      if (error) {
+        console.error('Error loading matches:', error);
+        return;
+      }
+
+      // Transform matches to show the other user's profile
+      const transformedMatches = data?.map(match => {
+        const otherUser = match.user1_id === user.id ? match.user2_profile : match.user1_profile;
+        return {
+          id: match.id,
+          match_id: match.id,
+          ...otherUser
+        };
+      }) || [];
+
+      setMatches(transformedMatches);
+    } catch (error) {
+      console.error('Error loading matches:', error);
+    }
+  };
+
+  const subscribeToMatches = () => {
+    const channel = supabase
+      .channel('matches-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'matches',
+          filter: `user1_id=eq.${user.id}`
+        },
+        () => {
+          loadMatches();
+          toast({
+            title: "Nuovo Match! 🎉",
+            description: "Hai un nuovo match! Vai alla sezione Match per iniziare a chattare."
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'matches',
+          filter: `user2_id=eq.${user.id}`
+        },
+        () => {
+          loadMatches();
+          toast({
+            title: "Nuovo Match! 🎉",
+            description: "Hai un nuovo match! Vai alla sezione Match per iniziare a chattare."
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   };
 
   // Update visibility and start/stop scanning
@@ -110,8 +186,8 @@ const Index = () => {
       if (scanningStarted) {
         await updateVisibility(true);
         toast({
-          title: "You're now visible!",
-          description: "Others nearby can now see your profile. GPS scanning is active."
+          title: "Sei ora visibile!",
+          description: "Gli altri nelle vicinanze possono ora vedere il tuo profilo. Scansione GPS attiva."
         });
       }
     } else {
@@ -119,8 +195,8 @@ const Index = () => {
       await stopScanning();
       await updateVisibility(false);
       toast({
-        title: "You're now hidden",
-        description: "Your profile is no longer visible to others nearby."
+        title: "Sei ora nascosto",
+        description: "Il tuo profilo non è più visibile agli altri nelle vicinanze."
       });
     }
   };
@@ -131,8 +207,8 @@ const Index = () => {
       const timer = setTimeout(() => {
         handleVisibilityToggle(false);
         toast({
-          title: "Visibility turned off",
-          description: "You've been automatically hidden for privacy. Turn on visibility to continue meeting people."
+          title: "Visibilità disattivata",
+          description: "Sei stato automaticamente nascosto per privacy. Attiva la visibilità per continuare a conoscere persone."
         });
       }, 15 * 60 * 1000); // 15 minutes
 
@@ -140,24 +216,44 @@ const Index = () => {
     }
   }, [isScanning]);
 
-  const handleInterest = (userId: string) => {
+  const handleInterest = async (userId: string) => {
     console.log('Showing interest in user:', userId);
-    const user = nearbyUsers.find(u => u.id === userId);
-    if (user) {
-      // Simulate mutual interest (for demo)
-      const isMutual = Math.random() > 0.5;
-      if (isMutual) {
-        setMatches(prev => [...prev, user]);
+    
+    try {
+      const { data, error } = await supabase.rpc('handle_interest', {
+        target_user_id: userId
+      });
+
+      if (error) {
+        console.error('Error handling interest:', error);
         toast({
-          title: "It's a match! 🎉",
-          description: `You and ${user.name} are both interested! Start chatting now.`
+          title: "Errore",
+          description: "Non è stato possibile inviare l'interesse. Riprova.",
+          variant: "destructive"
         });
+        return;
+      }
+
+      if (data.type === 'match') {
+        toast({
+          title: "È un match! 🎉",
+          description: data.message
+        });
+        // Reload matches to show the new match
+        loadMatches();
       } else {
         toast({
-          title: "Interest sent",
-          description: `${user.name} will be notified if they're also interested in you.`
+          title: "Interesse inviato",
+          description: data.message
         });
       }
+    } catch (error) {
+      console.error('Error handling interest:', error);
+      toast({
+        title: "Errore",
+        description: "Errore imprevisto. Riprova.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -173,7 +269,7 @@ const Index = () => {
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-pulse mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-600">Caricamento...</p>
         </div>
       </div>
     );
@@ -220,25 +316,25 @@ const Index = () => {
         <Card className="p-4 mb-6 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Your status</p>
+              <p className="text-sm text-gray-600">Il tuo stato</p>
               <p className="font-semibold text-lg flex items-center gap-2">
                 {isScanning ? (
                   <>
-                    <span className="text-green-600">Visible & Scanning</span>
+                    <span className="text-green-600">Visibile e Scansionando</span>
                     <MapPin className="w-4 h-4 text-green-600" />
                   </>
                 ) : (
-                  <span className="text-gray-500">Hidden</span>
+                  <span className="text-gray-500">Nascosto</span>
                 )}
               </p>
               {currentLocation && isScanning && (
                 <p className="text-xs text-gray-500">
-                  Accuracy: {Math.round(currentLocation.accuracy)}m
+                  Precisione: {Math.round(currentLocation.accuracy)}m
                 </p>
               )}
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-600">Nearby people</p>
+              <p className="text-sm text-gray-600">Persone vicine</p>
               <p className="font-bold text-2xl text-purple-600 flex items-center gap-1">
                 {nearbyUsers.length}
                 {isScanning && <Wifi className="w-4 h-4 text-green-500" />}
@@ -253,15 +349,15 @@ const Index = () => {
             <div className="flex items-center space-x-3">
               <MapPin className="w-5 h-5 text-yellow-600" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-yellow-800">Location Permission Required</p>
-                <p className="text-xs text-yellow-700">Enable location services to find people nearby</p>
+                <p className="text-sm font-medium text-yellow-800">Permesso Posizione Richiesto</p>
+                <p className="text-xs text-yellow-700">Abilita i servizi di localizzazione per trovare persone vicine</p>
               </div>
               <Button 
                 size="sm" 
                 onClick={requestLocationPermission}
                 className="bg-yellow-600 hover:bg-yellow-700"
               >
-                Enable
+                Abilita
               </Button>
             </div>
           </Card>
@@ -270,10 +366,10 @@ const Index = () => {
         {/* Main Content Tabs */}
         <Tabs defaultValue="discover" className="w-full">
           <TabsList className="grid w-full grid-cols-4 bg-white/80 backdrop-blur-sm">
-            <TabsTrigger value="discover">Discover</TabsTrigger>
-            <TabsTrigger value="matches">Matches</TabsTrigger>
-            <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="discover">Scopri</TabsTrigger>
+            <TabsTrigger value="matches">Match</TabsTrigger>
+            <TabsTrigger value="profile">Profilo</TabsTrigger>
+            <TabsTrigger value="settings">Impostazioni</TabsTrigger>
           </TabsList>
 
           <TabsContent value="discover" className="mt-6">
@@ -292,13 +388,13 @@ const Index = () => {
 
           <TabsContent value="matches" className="mt-6">
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold">Your Matches</h2>
+              <h2 className="text-xl font-semibold">I tuoi Match</h2>
               {matches.length === 0 ? (
                 <Card className="p-8 text-center bg-white/80 backdrop-blur-sm">
                   <MessageCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">No matches yet</p>
+                  <p className="text-gray-600">Nessun match ancora</p>
                   <p className="text-sm text-gray-500 mt-2">
-                    Turn on visibility and show interest in people nearby to start matching!
+                    Attiva la visibilità e mostra interesse alle persone vicine per iniziare a fare match!
                   </p>
                 </Card>
               ) : (
