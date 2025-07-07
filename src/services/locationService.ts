@@ -1,4 +1,3 @@
-
 import { Geolocation } from '@capacitor/geolocation';
 
 export interface LocationData {
@@ -96,8 +95,8 @@ class LocationServiceClass {
 
   async stopLocationTracking(): Promise<void> {
     if (this.watchId) {
-      // Fixed: Geolocation.clearWatch expects only the watchId string, not an object
-      await Geolocation.clearWatch({ id: this.watchId });
+      // Fixed: Geolocation.clearWatch expects only the watchId string
+      await Geolocation.clearWatch(this.watchId);
       this.watchId = null;
     }
     this.isTracking = false;
