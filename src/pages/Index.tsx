@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
@@ -72,13 +71,10 @@ const Index = () => {
 
   const loadMatches = async () => {
     try {
-      const { data, error } = await supabase
+      // Fixed query: use proper joins instead of foreign key references
+      const { data: matchesData, error } = await supabase
         .from('matches')
-        .select(`
-          *,
-          user1_profile:profiles!matches_user1_id_fkey(id, name, bio, photo),
-          user2_profile:profiles!matches_user2_id_fkey(id, name, bio, photo)
-        `)
+        .select('*')
         .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`);
 
       if (error) {
@@ -86,17 +82,32 @@ const Index = () => {
         return;
       }
 
-      // Transform matches to show the other user's profile
-      const transformedMatches = data?.map(match => {
-        const otherUser = match.user1_id === user.id ? match.user2_profile : match.user1_profile;
-        return {
-          id: match.id,
-          match_id: match.id,
-          name: otherUser?.name || '',
-          bio: otherUser?.bio || '',
-          photo: otherUser?.photo || ''
-        };
-      }) || [];
+      if (!matchesData || matchesData.length === 0) {
+        setMatches([]);
+        return;
+      }
+
+      // Get profile data for each match
+      const transformedMatches = [];
+      for (const match of matchesData) {
+        const otherUserId = match.user1_id === user.id ? match.user2_id : match.user1_id;
+        
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, name, bio, photo')
+          .eq('id', otherUserId)
+          .single();
+
+        if (!profileError && profileData) {
+          transformedMatches.push({
+            id: match.id,
+            match_id: match.id,
+            name: profileData.name || '',
+            bio: profileData.bio || '',
+            photo: profileData.photo || ''
+          });
+        }
+      }
 
       setMatches(transformedMatches);
     } catch (error) {
