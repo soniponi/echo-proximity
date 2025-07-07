@@ -1,12 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, EyeOff, MessageCircle, User, LogOut, MapPin, Wifi } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +11,10 @@ import UserProfile from '@/components/UserProfile';
 import NearbyUsers from '@/components/NearbyUsers';
 import ChatInterface from '@/components/ChatInterface';
 import SettingsPanel from '@/components/SettingsPanel';
+import AppHeader from '@/components/AppHeader';
+import StatusCard from '@/components/StatusCard';
+import LocationPermissionAlert from '@/components/LocationPermissionAlert';
+import MatchesList from '@/components/MatchesList';
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
@@ -26,7 +24,7 @@ const Index = () => {
   const [activeChat, setActiveChat] = useState(null);
   const { toast } = useToast();
 
-  // Use the new proximity scanner hook
+  // Use the proximity scanner hook
   const {
     isScanning,
     nearbyUsers,
@@ -94,7 +92,9 @@ const Index = () => {
         return {
           id: match.id,
           match_id: match.id,
-          ...otherUser
+          name: otherUser?.name || '',
+          bio: otherUser?.bio || '',
+          photo: otherUser?.photo || ''
         };
       }) || [];
 
@@ -234,17 +234,20 @@ const Index = () => {
         return;
       }
 
-      if (data.type === 'match') {
+      // Handle the response properly with type assertion
+      const result = data as { type: string; message: string };
+      
+      if (result.type === 'match') {
         toast({
           title: "È un match! 🎉",
-          description: data.message
+          description: result.message
         });
         // Reload matches to show the new match
         loadMatches();
       } else {
         toast({
           title: "Interesse inviato",
-          description: data.message
+          description: result.message
         });
       }
     } catch (error) {
@@ -283,84 +286,20 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50">
       <div className="container mx-auto px-4 py-6 max-w-md">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-              <User className="w-4 h-4 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              NearBy
-            </h1>
-          </div>
-          
-          <div className="flex items-center space-x-2">
-            {isScanning ? <Eye className="w-4 h-4 text-green-500" /> : <EyeOff className="w-4 h-4 text-gray-400" />}
-            <Switch 
-              checked={isScanning} 
-              onCheckedChange={handleVisibilityToggle}
-              className="data-[state=checked]:bg-green-500"
-            />
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleSignOut}
-              className="ml-2"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
+        <AppHeader 
+          isScanning={isScanning}
+          onVisibilityToggle={handleVisibilityToggle}
+          onSignOut={handleSignOut}
+        />
 
-        {/* Status Card */}
-        <Card className="p-4 mb-6 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Il tuo stato</p>
-              <p className="font-semibold text-lg flex items-center gap-2">
-                {isScanning ? (
-                  <>
-                    <span className="text-green-600">Visibile e Scansionando</span>
-                    <MapPin className="w-4 h-4 text-green-600" />
-                  </>
-                ) : (
-                  <span className="text-gray-500">Nascosto</span>
-                )}
-              </p>
-              {currentLocation && isScanning && (
-                <p className="text-xs text-gray-500">
-                  Precisione: {Math.round(currentLocation.accuracy)}m
-                </p>
-              )}
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-600">Persone vicine</p>
-              <p className="font-bold text-2xl text-purple-600 flex items-center gap-1">
-                {nearbyUsers.length}
-                {isScanning && <Wifi className="w-4 h-4 text-green-500" />}
-              </p>
-            </div>
-          </div>
-        </Card>
+        <StatusCard 
+          isScanning={isScanning}
+          currentLocation={currentLocation}
+          nearbyUsersCount={nearbyUsers.length}
+        />
 
-        {/* Location Permission Alert */}
         {locationPermission === false && (
-          <Card className="p-4 mb-6 bg-yellow-50 border-yellow-200">
-            <div className="flex items-center space-x-3">
-              <MapPin className="w-5 h-5 text-yellow-600" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-yellow-800">Permesso Posizione Richiesto</p>
-                <p className="text-xs text-yellow-700">Abilita i servizi di localizzazione per trovare persone vicine</p>
-              </div>
-              <Button 
-                size="sm" 
-                onClick={requestLocationPermission}
-                className="bg-yellow-600 hover:bg-yellow-700"
-              >
-                Abilita
-              </Button>
-            </div>
-          </Card>
+          <LocationPermissionAlert onRequestPermission={requestLocationPermission} />
         )}
 
         {/* Main Content Tabs */}
@@ -387,42 +326,10 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="matches" className="mt-6">
-            <div className="space-y-4">
-              <h2 className="text-xl font-semibold">I tuoi Match</h2>
-              {matches.length === 0 ? (
-                <Card className="p-8 text-center bg-white/80 backdrop-blur-sm">
-                  <MessageCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">Nessun match ancora</p>
-                  <p className="text-sm text-gray-500 mt-2">
-                    Attiva la visibilità e mostra interesse alle persone vicine per iniziare a fare match!
-                  </p>
-                </Card>
-              ) : (
-                matches.map((match) => (
-                  <Card key={match.id} className="p-4 bg-white/80 backdrop-blur-sm hover:shadow-lg transition-shadow">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <Avatar>
-                          <AvatarImage src={match.photo} />
-                          <AvatarFallback>{match.name[0]}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-semibold">{match.name}</p>
-                          <p className="text-sm text-gray-600">{match.bio}</p>
-                        </div>
-                      </div>
-                      <Button 
-                        size="sm"
-                        onClick={() => setActiveChat(match)}
-                        className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                      >
-                        Chat
-                      </Button>
-                    </div>
-                  </Card>
-                ))
-              )}
-            </div>
+            <MatchesList 
+              matches={matches}
+              onStartChat={setActiveChat}
+            />
           </TabsContent>
 
           <TabsContent value="profile" className="mt-6">

@@ -1,6 +1,7 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { LocationService, LocationData } from '@/services/locationService';
+import { locationService, LocationData } from '@/services/locationService';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -23,7 +24,6 @@ export const useProximityScanner = () => {
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const startingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const locationService = LocationService.getInstance();
 
   // Clear starting timeout on unmount
   useEffect(() => {
@@ -54,7 +54,7 @@ export const useProximityScanner = () => {
       setLocationPermission(false);
       return false;
     }
-  }, [locationService, toast]);
+  }, [toast]);
 
   const startScanning = useCallback(async () => {
     if (!user || isScanning || isStarting) {
@@ -128,7 +128,7 @@ export const useProximityScanner = () => {
       });
       return false;
     }
-  }, [user, isScanning, isStarting, locationService, requestLocationPermission, toast]);
+  }, [user, isScanning, isStarting, requestLocationPermission, toast]);
 
   const stopScanning = useCallback(async () => {
     console.log('Stopping proximity scanning...');
@@ -148,7 +148,7 @@ export const useProximityScanner = () => {
       title: "Scanning Stopped",
       description: "You're no longer visible to others nearby.",
     });
-  }, [locationService, toast]);
+  }, [toast]);
 
   const scanForNearbyUsers = useCallback(async (location?: LocationData) => {
     if (!user) return;
@@ -163,7 +163,7 @@ export const useProximityScanner = () => {
     } catch (error) {
       console.error('Error scanning for nearby users:', error);
     }
-  }, [user, currentLocation, locationService]);
+  }, [user, currentLocation]);
 
   // Set up real-time subscription for nearby users
   useEffect(() => {
