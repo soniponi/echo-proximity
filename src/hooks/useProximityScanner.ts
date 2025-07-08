@@ -24,12 +24,21 @@ export const useProximityScanner = () => {
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const startingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const channelRef = useRef<any>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clear starting timeout on unmount
+  // Clear refs on unmount
   useEffect(() => {
     return () => {
       if (startingTimeoutRef.current) {
         clearTimeout(startingTimeoutRef.current);
+      }
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
   }, []);
@@ -55,6 +64,21 @@ export const useProximityScanner = () => {
       return false;
     }
   }, [toast]);
+
+  const scanForNearbyUsers = useCallback(async (location?: LocationData) => {
+    if (!user) return;
+
+    const scanLocation = location || currentLocation;
+    if (!scanLocation) return;
+
+    try {
+      const users = await locationService.findNearbyUsers(user.id, scanLocation, 100);
+      console.log('Found nearby users:', users);
+      setNearbyUsers(users);
+    } catch (error) {
+      console.error('Error scanning for nearby users:', error);
+    }
+  }, [user, currentLocation]);
 
   const startScanning = useCallback(async () => {
     if (!user || isScanning || isStarting) {
@@ -128,7 +152,7 @@ export const useProximityScanner = () => {
       });
       return false;
     }
-  }, [user, isScanning, isStarting, requestLocationPermission, toast]);
+  }, [user, isScanning, isStarting, requestLocationPermission, toast, scanForNearbyUsers]);
 
   const stopScanning = useCallback(async () => {
     console.log('Stopping proximity scanning...');
@@ -138,9 +162,21 @@ export const useProximityScanner = () => {
       clearTimeout(startingTimeoutRef.current);
     }
     
+    // Clear interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    // Remove channel subscription
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+    
     await locationService.stopLocationTracking();
     setIsScanning(false);
-    setIsStarting(false); // Reset starting state
+    setIsStarting(false);
     setNearbyUsers([]);
     setCurrentLocation(null);
 
@@ -150,51 +186,54 @@ export const useProximityScanner = () => {
     });
   }, [toast]);
 
-  const scanForNearbyUsers = useCallback(async (location?: LocationData) => {
-    if (!user) return;
-
-    const scanLocation = location || currentLocation;
-    if (!scanLocation) return;
-
-    try {
-      const users = await locationService.findNearbyUsers(user.id, scanLocation, 100);
-      console.log('Found nearby users:', users);
-      setNearbyUsers(users);
-    } catch (error) {
-      console.error('Error scanning for nearby users:', error);
-    }
-  }, [user, currentLocation]);
-
   // Set up real-time subscription for nearby users
   useEffect(() => {
-    if (!isScanning || !user) return;
+    if (!isScanning || !user) {
+      // Clean up existing subscriptions when not scanning
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
 
-    // Subscribe to profile changes for real-time updates
-    const channel = supabase
-      .channel('proximity-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'profiles',
-          filter: `is_visible=eq.true`
-        },
-        () => {
-          // Re-scan when profiles change
-          scanForNearbyUsers();
-        }
-      )
-      .subscribe();
+    // Only create new subscription if one doesn't exist
+    if (!channelRef.current) {
+      console.log('Creating new Supabase channel subscription');
+      channelRef.current = supabase
+        .channel(`proximity-updates-${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'profiles',
+            filter: `is_visible=eq.true`
+          },
+          () => {
+            console.log('Profile change detected, re-scanning...');
+            scanForNearbyUsers();
+          }
+        )
+        .subscribe((status) => {
+          console.log('Subscription status:', status);
+        });
+    }
 
-    // Periodic scanning every 30 seconds
-    const interval = setInterval(() => {
-      scanForNearbyUsers();
-    }, 30000);
+    // Set up periodic scanning if not already running
+    if (!intervalRef.current) {
+      intervalRef.current = setInterval(() => {
+        console.log('Periodic scan triggered');
+        scanForNearbyUsers();
+      }, 30000);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
-      clearInterval(interval);
+      // Cleanup will be handled by the main useEffect cleanup
     };
   }, [isScanning, user, scanForNearbyUsers]);
 
