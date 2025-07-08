@@ -129,8 +129,8 @@ const Index = () => {
         () => {
           loadMatches();
           toast({
-            title: "Nuovo Match! 🎉",
-            description: "Hai un nuovo match! Vai alla sezione Match per iniziare a chattare."
+            title: "New Match! 🎉",
+            description: "You have a new match! Go to the Matches section to start chatting."
           });
         }
       )
@@ -145,8 +145,8 @@ const Index = () => {
         () => {
           loadMatches();
           toast({
-            title: "Nuovo Match! 🎉",
-            description: "Hai un nuovo match! Vai alla sezione Match per iniziare a chattare."
+            title: "New Match! 🎉",
+            description: "You have a new match! Go to the Matches section to start chatting."
           });
         }
       )
@@ -197,8 +197,8 @@ const Index = () => {
       if (scanningStarted) {
         await updateVisibility(true);
         toast({
-          title: "Sei ora visibile!",
-          description: "Gli altri nelle vicinanze possono ora vedere il tuo profilo. Scansione GPS attiva."
+          title: "You are now visible!",
+          description: "Others nearby can now see your profile. GPS scanning active."
         });
       }
     } else {
@@ -206,8 +206,8 @@ const Index = () => {
       await stopScanning();
       await updateVisibility(false);
       toast({
-        title: "Sei ora nascosto",
-        description: "Il tuo profilo non è più visibile agli altri nelle vicinanze."
+        title: "You are now hidden",
+        description: "Your profile is no longer visible to others nearby."
       });
     }
   };
@@ -218,8 +218,8 @@ const Index = () => {
       const timer = setTimeout(() => {
         handleVisibilityToggle(false);
         toast({
-          title: "Visibilità disattivata",
-          description: "Sei stato automaticamente nascosto per privacy. Attiva la visibilità per continuare a conoscere persone."
+          title: "Visibility disabled",
+          description: "You have been automatically hidden for privacy. Enable visibility to continue meeting people."
         });
       }, 15 * 60 * 1000); // 15 minutes
 
@@ -238,8 +238,8 @@ const Index = () => {
       if (error) {
         console.error('Error handling interest:', error);
         toast({
-          title: "Errore",
-          description: "Non è stato possibile inviare l'interesse. Riprova.",
+          title: "Error",
+          description: "Could not send interest. Please try again.",
           variant: "destructive"
         });
         return;
@@ -250,22 +250,22 @@ const Index = () => {
       
       if (result.type === 'match') {
         toast({
-          title: "È un match! 🎉",
+          title: "It's a match! 🎉",
           description: result.message
         });
         // Reload matches to show the new match
         loadMatches();
       } else {
         toast({
-          title: "Interesse inviato",
+          title: "Interest sent",
           description: result.message
         });
       }
     } catch (error) {
       console.error('Error handling interest:', error);
       toast({
-        title: "Errore",
-        description: "Errore imprevisto. Riprova.",
+        title: "Error",
+        description: "Unexpected error. Please try again.",
         variant: "destructive"
       });
     }
@@ -283,7 +283,7 @@ const Index = () => {
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-pulse mx-auto mb-4"></div>
-          <p className="text-gray-600">Caricamento...</p>
+          <p className="text-gray-600">Loading...</p>
         </div>
       </div>
     );
@@ -297,16 +297,13 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50">
       <div className="container mx-auto px-4 py-6 max-w-md">
-        <AppHeader 
-          isScanning={isScanning}
-          onVisibilityToggle={handleVisibilityToggle}
-          onSignOut={handleSignOut}
-        />
+        <AppHeader onSignOut={handleSignOut} />
 
         <StatusCard 
           isScanning={isScanning}
           currentLocation={currentLocation}
           nearbyUsersCount={nearbyUsers.length}
+          onVisibilityToggle={handleVisibilityToggle}
         />
 
         {locationPermission === false && (
@@ -316,10 +313,10 @@ const Index = () => {
         {/* Main Content Tabs */}
         <Tabs defaultValue="discover" className="w-full">
           <TabsList className="grid w-full grid-cols-4 bg-white/80 backdrop-blur-sm">
-            <TabsTrigger value="discover">Scopri</TabsTrigger>
-            <TabsTrigger value="matches">Match</TabsTrigger>
-            <TabsTrigger value="profile">Profilo</TabsTrigger>
-            <TabsTrigger value="settings">Impostazioni</TabsTrigger>
+            <TabsTrigger value="discover">Discover</TabsTrigger>
+            <TabsTrigger value="matches">Matches</TabsTrigger>
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
           <TabsContent value="discover" className="mt-6">

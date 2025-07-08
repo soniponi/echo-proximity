@@ -16,15 +16,15 @@ const LocationPermissionAlert: React.FC<LocationPermissionAlertProps> = ({
       <div className="flex items-center space-x-3">
         <MapPin className="w-5 h-5 text-yellow-600" />
         <div className="flex-1">
-          <p className="text-sm font-medium text-yellow-800">Permesso Posizione Richiesto</p>
-          <p className="text-xs text-yellow-700">Abilita i servizi di localizzazione per trovare persone vicine</p>
+          <p className="text-sm font-medium text-yellow-800">Location Permission Required</p>
+          <p className="text-xs text-yellow-700">Enable location services to find nearby people</p>
         </div>
         <Button 
           size="sm" 
           onClick={onRequestPermission}
           className="bg-yellow-600 hover:bg-yellow-700"
         >
-          Abilita
+          Enable
         </Button>
       </div>
     </Card>
