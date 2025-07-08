@@ -48,9 +48,9 @@ const StatusCard: React.FC<StatusCardProps> = ({
         </div>
       </div>
       
-      {/* Visibility toggle row */}
-      <div className="flex items-center justify-center space-x-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 border border-white/20">
-        {isScanning ? <Eye className="w-4 h-4 text-green-500" /> : <EyeOff className="w-4 h-4 text-gray-400" />}
+      {/* Visibility toggle row - centered and accessible */}
+      <div className="flex items-center justify-center space-x-3 bg-white/90 backdrop-blur-sm rounded-full px-6 py-3 border border-white/20 shadow-sm">
+        {isScanning ? <Eye className="w-5 h-5 text-green-500" /> : <EyeOff className="w-5 h-5 text-gray-400" />}
         <Switch 
           checked={isScanning} 
           onCheckedChange={onVisibilityToggle}
