@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,6 +23,7 @@ const Index = () => {
   const [matches, setMatches] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const { toast } = useToast();
+  const matchesChannelRef = useRef(null);
 
   // Use the proximity scanner hook
   const {
@@ -48,6 +50,14 @@ const Index = () => {
       loadMatches();
       subscribeToMatches();
     }
+
+    // Cleanup function
+    return () => {
+      if (matchesChannelRef.current) {
+        supabase.removeChannel(matchesChannelRef.current);
+        matchesChannelRef.current = null;
+      }
+    };
   }, [user]);
 
   const loadUserProfile = async () => {
@@ -116,7 +126,14 @@ const Index = () => {
   };
 
   const subscribeToMatches = () => {
-    const channel = supabase
+    // Clean up any existing subscription first
+    if (matchesChannelRef.current) {
+      supabase.removeChannel(matchesChannelRef.current);
+      matchesChannelRef.current = null;
+    }
+
+    // Create new channel subscription
+    matchesChannelRef.current = supabase
       .channel('matches-channel')
       .on(
         'postgres_changes',
@@ -151,10 +168,6 @@ const Index = () => {
         }
       )
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   };
 
   // Update visibility and start/stop scanning
