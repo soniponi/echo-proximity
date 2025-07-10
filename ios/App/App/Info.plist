@@ -54,11 +54,25 @@
 	<string>NearBy usa il Bluetooth per rilevare utenti vicini per connessioni sociali</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>NearBy usa il Bluetooth per rilevare utenti vicini per connessioni sociali</string>
+	<key>NSCameraUsageDescription</key>
+	<string>NearBy ha bisogno dell'accesso alla fotocamera per scattare foto del profilo</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>NearBy ha bisogno dell'accesso alla libreria foto per selezionare immagini del profilo</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>NearBy può usare il microfono per messaggi vocali nelle chat</string>
+	<key>NSContactsUsageDescription</key>
+	<string>NearBy può accedere ai contatti per trovare amici che usano l'app</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>NearBy può accedere al calendario per organizzare incontri</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>NearBy può creare promemoria per gli incontri pianificati</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
 		<string>background-fetch</string>
 		<string>background-processing</string>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
 	</array>
 </dict>
 </plist>
