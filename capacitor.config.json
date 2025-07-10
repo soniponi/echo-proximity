@@ -2,6 +2,7 @@
   "appId": "com.lovable.nearbyapp",
   "appName": "NearBy",
   "webDir": "dist",
+  "bundledWebRuntime": false,
   "plugins": {
     "SplashScreen": {
       "launchShowDuration": 3000,
