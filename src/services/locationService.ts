@@ -1,4 +1,5 @@
 
+import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 
 export interface LocationData {
@@ -20,7 +21,7 @@ export interface NearbyUser {
 
 class LocationServiceClass {
   private static instance: LocationServiceClass;
-  private watchId: string | null = null;
+  private watchId: string | number | null = null;
   private isTracking = false;
 
   static getInstance(): LocationServiceClass {
@@ -32,8 +33,31 @@ class LocationServiceClass {
 
   async requestPermissions(): Promise<boolean> {
     try {
-      const permissions = await Geolocation.requestPermissions();
-      return permissions.location === 'granted';
+      if (Capacitor.isNativePlatform()) {
+        // Use Capacitor for native platforms
+        const permissions = await Geolocation.requestPermissions();
+        return permissions.location === 'granted';
+      } else {
+        // Use Web Geolocation API for browsers
+        if (!navigator.geolocation) {
+          console.error('Geolocation is not supported by this browser');
+          return false;
+        }
+        
+        // Test if we can get location (this will trigger permission request)
+        try {
+          await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              timeout: 5000,
+              enableHighAccuracy: false
+            });
+          });
+          return true;
+        } catch (error) {
+          console.error('Web geolocation permission denied:', error);
+          return false;
+        }
+      }
     } catch (error) {
       console.error('Error requesting location permissions:', error);
       return false;
@@ -42,18 +66,37 @@ class LocationServiceClass {
 
   async getCurrentLocation(): Promise<LocationData | null> {
     try {
-      const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
-      });
+      if (Capacitor.isNativePlatform()) {
+        // Use Capacitor for native platforms
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000
+        });
 
-      return {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        timestamp: position.timestamp
-      };
+        return {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: position.timestamp
+        };
+      } else {
+        // Use Web Geolocation API for browsers
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+          });
+        });
+
+        return {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: position.timestamp
+        };
+      }
     } catch (error) {
       console.error('Error getting current location:', error);
       return null;
@@ -66,20 +109,35 @@ class LocationServiceClass {
     }
 
     try {
-      // Fixed: Geolocation.watchPosition expects options and success callback only
-      this.watchId = await Geolocation.watchPosition(
-        {
-          enableHighAccuracy: true,
-          timeout: 30000,
-          maximumAge: 60000
-        },
-        (position, error) => {
-          if (error) {
-            console.error('Location tracking error:', error);
-            return;
+      if (Capacitor.isNativePlatform()) {
+        // Use Capacitor for native platforms
+        this.watchId = await Geolocation.watchPosition(
+          {
+            enableHighAccuracy: true,
+            timeout: 30000,
+            maximumAge: 60000
+          },
+          (position, error) => {
+            if (error) {
+              console.error('Location tracking error:', error);
+              return;
+            }
+            
+            if (position) {
+              console.log('Location updated:', position);
+              this.updateLocationInDatabase(userId, {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                timestamp: position.timestamp
+              });
+            }
           }
-          
-          if (position) {
+        );
+      } else {
+        // Use Web Geolocation API for browsers
+        this.watchId = navigator.geolocation.watchPosition(
+          (position) => {
             console.log('Location updated:', position);
             this.updateLocationInDatabase(userId, {
               latitude: position.coords.latitude,
@@ -87,9 +145,17 @@ class LocationServiceClass {
               accuracy: position.coords.accuracy,
               timestamp: position.timestamp
             });
+          },
+          (error) => {
+            console.error('Location tracking error:', error);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 30000,
+            maximumAge: 60000
           }
-        }
-      );
+        );
+      }
 
       this.isTracking = true;
       return true;
@@ -101,8 +167,13 @@ class LocationServiceClass {
 
   async stopLocationTracking(): Promise<void> {
     if (this.watchId) {
-      // Fixed: Geolocation.clearWatch expects a ClearWatchOptions object
-      await Geolocation.clearWatch({ id: this.watchId });
+      if (Capacitor.isNativePlatform()) {
+        // Use Capacitor for native platforms
+        await Geolocation.clearWatch({ id: this.watchId as string });
+      } else {
+        // Use Web Geolocation API for browsers
+        navigator.geolocation.clearWatch(this.watchId as number);
+      }
       this.watchId = null;
     }
     this.isTracking = false;
