@@ -26,6 +26,6 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
-    exclude: ['@capacitor/geolocation'],
+    exclude: ['@capacitor/core', '@capacitor/geolocation'],
   },
 }));
