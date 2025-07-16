@@ -239,7 +239,11 @@ class LocationService {
     try {
       if (Capacitor.isNativePlatform()) {
         const permissions = await Geolocation.checkPermissions();
-        return permissions.location;
+        const status = permissions.location;
+        // Map Capacitor permission states to our expected format
+        if (status === 'granted') return 'granted';
+        if (status === 'denied') return 'denied';
+        return 'prompt';
       } else {
         // For web browsers
         if (!navigator.permissions) {
@@ -254,7 +258,12 @@ class LocationService {
 
         try {
           const permission = await navigator.permissions.query({ name: 'geolocation' });
-          return permission.state;
+          const state = permission.state;
+          // Handle all possible PermissionState values
+          if (state === 'granted') return 'granted';
+          if (state === 'denied') return 'denied';
+          // Map 'prompt-with-rationale' to 'prompt'
+          return 'prompt';
         } catch {
           // Fallback
           try {
