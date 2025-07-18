@@ -32,7 +32,6 @@ class LocationService {
       console.log('🔍 Requesting location permissions...');
       
       if (Capacitor.isNativePlatform()) {
-        // For native platforms (iOS/Android), use Capacitor Geolocation
         console.log('📱 Native platform detected, using Capacitor Geolocation');
         
         // First check current permissions
@@ -57,7 +56,6 @@ class LocationService {
         
         return isGranted;
       } else {
-        // For web browsers
         console.log('🌐 Web platform detected, using browser geolocation');
         try {
           await this.getCurrentPosition();
@@ -79,11 +77,10 @@ class LocationService {
       console.log('📍 Getting current position...');
       
       if (Capacitor.isNativePlatform()) {
-        // Use Capacitor Geolocation for native platforms
         console.log('📱 Using Capacitor Geolocation');
         const position = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
-          timeout: 15000,
+          timeout: 30000, // Increased timeout for Android
           maximumAge: 300000 // 5 minutes
         });
         
@@ -97,7 +94,6 @@ class LocationService {
         console.log('📍 Native position obtained:', locationData);
         return locationData;
       } else {
-        // Use web geolocation for browsers
         console.log('🌐 Using web geolocation');
         return new Promise((resolve, reject) => {
           if (!navigator.geolocation) {
@@ -131,7 +127,7 @@ class LocationService {
             },
             {
               enableHighAccuracy: true,
-              timeout: 15000,
+              timeout: 30000, // Increased timeout
               maximumAge: 300000 // 5 minutes
             }
           );
@@ -315,7 +311,6 @@ class LocationService {
           // Handle all possible PermissionState values
           if (state === 'granted') return 'granted';
           if (state === 'denied') return 'denied';
-          // Map 'prompt-with-rationale' to 'prompt'
           return 'prompt';
         } catch {
           // Fallback
