@@ -1,4 +1,3 @@
-
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,56 +27,118 @@ export interface NearbyUser {
 class LocationService {
   private watchId: string | number | null = null;
 
-  async getCurrentPosition(): Promise<LocationData> {
+  async requestPermissions(): Promise<boolean> {
     try {
+      console.log('🔍 Requesting location permissions...');
+      
       if (Capacitor.isNativePlatform()) {
-        // Use Capacitor Geolocation for native platforms
-        const position = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: true,
-          timeout: 10000
+        // For native platforms (iOS/Android), use Capacitor Geolocation
+        console.log('📱 Native platform detected, using Capacitor Geolocation');
+        
+        // First check current permissions
+        const currentPermissions = await Geolocation.checkPermissions();
+        console.log('📋 Current permissions:', currentPermissions);
+        
+        if (currentPermissions.location === 'granted') {
+          console.log('✅ Location permission already granted');
+          return true;
+        }
+        
+        // Request permissions if not granted
+        console.log('🔐 Requesting location permissions...');
+        const permissions = await Geolocation.requestPermissions({
+          permissions: ['location']
         });
         
-        return {
+        console.log('📝 Permission result:', permissions);
+        
+        const isGranted = permissions.location === 'granted';
+        console.log(isGranted ? '✅ Permission granted' : '❌ Permission denied');
+        
+        return isGranted;
+      } else {
+        // For web browsers
+        console.log('🌐 Web platform detected, using browser geolocation');
+        try {
+          await this.getCurrentPosition();
+          console.log('✅ Web geolocation permission granted');
+          return true;
+        } catch (error) {
+          console.error('❌ Web geolocation permission denied:', error);
+          return false;
+        }
+      }
+    } catch (error) {
+      console.error('💥 Error requesting location permission:', error);
+      return false;
+    }
+  }
+
+  async getCurrentPosition(): Promise<LocationData> {
+    try {
+      console.log('📍 Getting current position...');
+      
+      if (Capacitor.isNativePlatform()) {
+        // Use Capacitor Geolocation for native platforms
+        console.log('📱 Using Capacitor Geolocation');
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 300000 // 5 minutes
+        });
+        
+        const locationData = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
           timestamp: position.timestamp
         };
+        
+        console.log('📍 Native position obtained:', locationData);
+        return locationData;
       } else {
         // Use web geolocation for browsers
+        console.log('🌐 Using web geolocation');
         return new Promise((resolve, reject) => {
           if (!navigator.geolocation) {
-            reject({
+            const error = {
               code: 1,
               message: 'Geolocation is not supported by this browser'
-            });
+            };
+            console.error('❌ Geolocation not supported:', error);
+            reject(error);
             return;
           }
 
           navigator.geolocation.getCurrentPosition(
             (position) => {
-              resolve({
+              const locationData = {
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude,
                 accuracy: position.coords.accuracy,
                 timestamp: position.timestamp
-              });
+              };
+              console.log('📍 Web position obtained:', locationData);
+              resolve(locationData);
             },
             (error) => {
-              reject({
+              const locationError = {
                 code: error.code,
                 message: error.message
-              });
+              };
+              console.error('❌ Web geolocation error:', locationError);
+              reject(locationError);
             },
             {
               enableHighAccuracy: true,
-              timeout: 10000,
+              timeout: 15000,
               maximumAge: 300000 // 5 minutes
             }
           );
         });
       }
     } catch (error: any) {
+      console.error('💥 Error getting current position:', error);
       throw {
         code: error.code || 1,
         message: error.message || 'Failed to get location'
@@ -87,22 +148,6 @@ class LocationService {
 
   async getCurrentLocation(): Promise<LocationData> {
     return this.getCurrentPosition();
-  }
-
-  async requestPermissions(): Promise<boolean> {
-    try {
-      if (Capacitor.isNativePlatform()) {
-        const permissions = await Geolocation.requestPermissions();
-        return permissions.location === 'granted';
-      } else {
-        // For web, try to get current position to trigger permission request
-        await this.getCurrentPosition();
-        return true;
-      }
-    } catch (error) {
-      console.error('Location permission denied:', error);
-      return false;
-    }
   }
 
   async requestLocationPermission(): Promise<boolean> {
@@ -237,9 +282,13 @@ class LocationService {
 
   async checkLocationPermission(): Promise<'granted' | 'denied' | 'prompt'> {
     try {
+      console.log('🔍 Checking location permission status...');
+      
       if (Capacitor.isNativePlatform()) {
         const permissions = await Geolocation.checkPermissions();
         const status = permissions.location;
+        console.log('📱 Native permission status:', status);
+        
         // Map Capacitor permission states to our expected format
         if (status === 'granted') return 'granted';
         if (status === 'denied') return 'denied';
@@ -250,8 +299,10 @@ class LocationService {
           // Fallback for browsers that don't support permissions API
           try {
             await this.getCurrentPosition();
+            console.log('🌐 Web permission: granted (fallback test)');
             return 'granted';
           } catch {
+            console.log('🌐 Web permission: denied (fallback test)');
             return 'denied';
           }
         }
@@ -259,6 +310,8 @@ class LocationService {
         try {
           const permission = await navigator.permissions.query({ name: 'geolocation' });
           const state = permission.state;
+          console.log('🌐 Web permission status:', state);
+          
           // Handle all possible PermissionState values
           if (state === 'granted') return 'granted';
           if (state === 'denied') return 'denied';
@@ -275,7 +328,7 @@ class LocationService {
         }
       }
     } catch (error) {
-      console.error('Error checking location permission:', error);
+      console.error('💥 Error checking location permission:', error);
       return 'denied';
     }
   }

@@ -1,3 +1,4 @@
+
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -45,5 +46,13 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	
+	<!-- Location permissions for iOS -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Questa app ha bisogno della tua posizione per trovare persone nelle vicinanze.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Questa app ha bisogno della tua posizione per trovare persone nelle vicinanze anche quando l'app è in background.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Questa app ha bisogno della tua posizione per trovare persone nelle vicinanze.</string>
 </dict>
 </plist>
