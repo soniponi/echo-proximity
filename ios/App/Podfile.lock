@@ -1,7 +1,7 @@
 PODS:
-  - Capacitor (6.1.2):
+  - Capacitor (6.2.1):
     - CapacitorCordova
-  - CapacitorCordova (6.1.2)
+  - CapacitorCordova (6.2.1)
   - CapacitorGeolocation (6.0.1):
     - Capacitor
 
@@ -19,8 +19,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/geolocation"
 
 SPEC CHECKSUMS:
-  Capacitor: 679f9673fdf30597493a6362a5d5bf233d46abc2
-  CapacitorCordova: f48c89f96c319101cd2f0ce8a2b7449b5fb8b3dd
+  Capacitor: 1e0d0e7330dea9f983b50da737d8918abcf273f8
+  CapacitorCordova: 8d93e14982f440181be7304aa9559ca631d77fff
   CapacitorGeolocation: 39dca51d755f08ed1d43e51be55291a402cdc64f
 
 PODFILE CHECKSUM: a248d05c9b960deca59b3fd14438ab20b1696570
