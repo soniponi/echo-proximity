@@ -26,6 +26,7 @@ export interface NearbyUser {
 
 class LocationService {
   private watchId: string | number | null = null;
+  private watchGeneration = 0;
 
   async requestPermissions(): Promise<boolean> {
     try {
@@ -150,62 +151,59 @@ class LocationService {
     return this.requestPermissions();
   }
 
-  async findNearbyUsers(userId: string, location: LocationData, radiusMeters: number = 100): Promise<NearbyUser[]> {
-    try {
-      const { data, error } = await supabase.rpc('find_nearby_users', {
-        user_lat: location.latitude,
-        user_lng: location.longitude,
-        radius_meters: radiusMeters,
-        requesting_user_id: userId
-      });
+  /**
+   * Cerca gli utenti vicini alla posizione salvata dell'utente corrente.
+   * Il server usa auth.uid(): nessun id o coordinata viene passato dal client.
+   */
+  async findNearbyUsers(radiusMeters: number = 100): Promise<NearbyUser[]> {
+    const { data, error } = await supabase.rpc('find_nearby_users', {
+      radius_meters: radiusMeters
+    });
 
-      if (error) {
-        console.error('Error finding nearby users:', error);
-        throw error;
-      }
-
-      return data || [];
-    } catch (error) {
-      console.error('Error in findNearbyUsers:', error);
-      return [];
+    if (error) {
+      console.error('Error finding nearby users:', error);
+      throw error;
     }
+
+    return data || [];
   }
 
-  async startLocationTracking(userId: string): Promise<boolean> {
-    try {
-      const location = await this.getCurrentPosition();
-      
-      // Update user's location in the database
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          current_lat: location.latitude,
-          current_lng: location.longitude,
-          location_accuracy: location.accuracy,
-          location_updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
+  /**
+   * Salva/aggiorna la posizione dell'utente corrente (heartbeat).
+   * Il server la mantiene visibile per 2 minuti dall'ultimo aggiornamento.
+   */
+  async updateMyLocation(location: LocationData): Promise<boolean> {
+    const { error } = await supabase.rpc('update_my_location', {
+      lat: location.latitude,
+      lng: location.longitude,
+      accuracy: location.accuracy ?? null
+    });
 
-      if (error) {
-        console.error('Error updating location:', error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error starting location tracking:', error);
+    if (error) {
+      console.error('Error updating location:', error);
       return false;
+    }
+    return true;
+  }
+
+  /** Rimuove la posizione dell'utente corrente: smette subito di essere visibile. */
+  async clearMyLocation(): Promise<void> {
+    const { error } = await supabase.rpc('clear_my_location');
+    if (error) {
+      console.error('Error clearing location:', error);
     }
   }
 
   async stopLocationTracking(): Promise<void> {
-    if (this.watchId !== null) {
+    const watchId = this.watchId;
+    this.watchId = null;
+    this.watchGeneration++;
+    if (watchId !== null) {
       if (Capacitor.isNativePlatform()) {
-        await Geolocation.clearWatch({ id: this.watchId as string });
+        await Geolocation.clearWatch({ id: watchId as string });
       } else {
-        navigator.geolocation?.clearWatch(this.watchId as number);
+        navigator.geolocation?.clearWatch(watchId as number);
       }
-      this.watchId = null;
     }
   }
 
@@ -213,6 +211,10 @@ class LocationService {
     onSuccess: (location: LocationData) => void,
     onError: (error: LocationError) => void
   ): void {
+    // Evita watch duplicati
+    void this.stopLocationTracking();
+    const generation = this.watchGeneration;
+
     if (Capacitor.isNativePlatform()) {
       // Use Capacitor for native platforms
       Geolocation.watchPosition(
@@ -220,7 +222,14 @@ class LocationService {
           enableHighAccuracy: true,
           timeout: 10000
         },
-        (position) => {
+        (position, err) => {
+          if (err) {
+            onError({
+              code: err.code || 1,
+              message: err.message || 'Watch position failed'
+            });
+            return;
+          }
           if (position) {
             onSuccess({
               latitude: position.coords.latitude,
@@ -231,6 +240,11 @@ class LocationService {
           }
         }
       ).then((watchId) => {
+        if (generation !== this.watchGeneration) {
+          // stop chiamato prima che il watch fosse pronto
+          Geolocation.clearWatch({ id: watchId });
+          return;
+        }
         this.watchId = watchId;
       }).catch((error) => {
         onError({

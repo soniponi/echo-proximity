@@ -122,13 +122,9 @@ export type Database = {
         Row: {
           bio: string | null
           created_at: string
-          current_lat: number | null
-          current_lng: number | null
           id: string
           interests: string[] | null
           is_visible: boolean | null
-          location_accuracy: number | null
-          location_updated_at: string | null
           name: string
           photo: string | null
           updated_at: string
@@ -137,13 +133,9 @@ export type Database = {
         Insert: {
           bio?: string | null
           created_at?: string
-          current_lat?: number | null
-          current_lng?: number | null
           id: string
           interests?: string[] | null
           is_visible?: boolean | null
-          location_accuracy?: number | null
-          location_updated_at?: string | null
           name: string
           photo?: string | null
           updated_at?: string
@@ -152,17 +144,37 @@ export type Database = {
         Update: {
           bio?: string | null
           created_at?: string
-          current_lat?: number | null
-          current_lng?: number | null
           id?: string
           interests?: string[] | null
           is_visible?: boolean | null
-          location_accuracy?: number | null
-          location_updated_at?: string | null
           name?: string
           photo?: string | null
           updated_at?: string
           visibility_expires_at?: string | null
+        }
+        Relationships: []
+      }
+      user_locations: {
+        Row: {
+          accuracy: number | null
+          geog: unknown
+          updated_at: string
+          user_id: string
+          visible_until: string
+        }
+        Insert: {
+          accuracy?: number | null
+          geog: unknown
+          updated_at?: string
+          user_id: string
+          visible_until: string
+        }
+        Update: {
+          accuracy?: number | null
+          geog?: unknown
+          updated_at?: string
+          user_id?: string
+          visible_until?: string
         }
         Relationships: []
       }
@@ -171,13 +183,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      clear_my_location: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       find_nearby_users: {
-        Args: {
-          user_lat: number
-          user_lng: number
-          radius_meters?: number
-          requesting_user_id?: string
-        }
+        Args: { radius_meters?: number }
         Returns: {
           id: string
           name: string
@@ -191,6 +202,10 @@ export type Database = {
       handle_interest: {
         Args: { target_user_id: string }
         Returns: Json
+      }
+      update_my_location: {
+        Args: { lat: number; lng: number; accuracy?: number | null }
+        Returns: undefined
       }
     }
     Enums: {

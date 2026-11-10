@@ -1,18 +1,27 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { locationService, LocationData } from '@/services/locationService';
-import { supabase } from '@/integrations/supabase/client';
+import { locationService, LocationData, NearbyUser } from '@/services/locationService';
 import { useToast } from '@/hooks/use-toast';
 
-export interface NearbyUser {
-  id: string;
-  name: string;
-  bio: string;
-  photo: string;
-  interests: string[];
-  distance_meters: number;
-  last_seen: string;
-}
+export type { NearbyUser };
+
+const SEARCH_RADIUS_METERS = 100;
+/** Ogni quanto rinnovare la posizione sul server (il TTL lato server è 2 minuti). */
+const HEARTBEAT_MS = 30_000;
+/** Spostamento minimo che forza un aggiornamento immediato. */
+const MIN_MOVE_METERS = 25;
+
+/** Distanza approssimata in metri tra due coordinate (haversine). */
+const distanceMeters = (a: LocationData, b: LocationData): number => {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
 
 export const useProximityScanner = () => {
   const { user } = useAuth();
@@ -22,21 +31,20 @@ export const useProximityScanner = () => {
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
   const [isStarting, setIsStarting] = useState(false);
-  const startingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const channelRef = useRef<any>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const latestLocationRef = useRef<LocationData | null>(null);
+  const lastPushedRef = useRef<LocationData | null>(null);
+  const scanningRef = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check initial permission status
   useEffect(() => {
     const checkInitialPermission = async () => {
-      console.log('🔍 Checking initial permission status...');
       try {
         const permissionStatus = await locationService.checkLocationPermission();
-        const hasPermission = permissionStatus === 'granted';
-        console.log('📋 Initial permission status:', permissionStatus, '→', hasPermission);
-        setLocationPermission(hasPermission);
+        setLocationPermission(permissionStatus === 'granted');
       } catch (error) {
-        console.error('💥 Error checking initial permission:', error);
+        console.error('Error checking initial permission:', error);
         setLocationPermission(false);
       }
     };
@@ -44,29 +52,11 @@ export const useProximityScanner = () => {
     checkInitialPermission();
   }, []);
 
-  // Clear refs on unmount
-  useEffect(() => {
-    return () => {
-      if (startingTimeoutRef.current) {
-        clearTimeout(startingTimeoutRef.current);
-      }
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
-  }, []);
-
   const requestLocationPermission = useCallback(async () => {
-    console.log('🔐 Requesting location permission...');
     try {
       const hasPermission = await locationService.requestPermissions();
-      console.log('📝 Permission result:', hasPermission);
       setLocationPermission(hasPermission);
-      
+
       if (!hasPermission) {
         toast({
           title: "Permesso di localizzazione richiesto",
@@ -79,10 +69,10 @@ export const useProximityScanner = () => {
           description: "Ora puoi attivare la visibilità per trovare persone nelle vicinanze.",
         });
       }
-      
+
       return hasPermission;
     } catch (error) {
-      console.error('💥 Error requesting location permission:', error);
+      console.error('Error requesting location permission:', error);
       setLocationPermission(false);
       toast({
         title: "Errore permessi",
@@ -93,216 +83,163 @@ export const useProximityScanner = () => {
     }
   }, [toast]);
 
-  const scanForNearbyUsers = useCallback(async (location?: LocationData) => {
-    if (!user) return;
-
-    const scanLocation = location || currentLocation;
-    if (!scanLocation) return;
-
+  const scanForNearbyUsers = useCallback(async () => {
+    if (!user || !scanningRef.current) return;
     try {
-      console.log('🔍 Scanning for nearby users at:', scanLocation);
-      const users = await locationService.findNearbyUsers(user.id, scanLocation, 100);
-      console.log('👥 Found nearby users:', users.length);
-      setNearbyUsers(users);
+      const users = await locationService.findNearbyUsers(SEARCH_RADIUS_METERS);
+      if (scanningRef.current) setNearbyUsers(users);
     } catch (error) {
-      console.error('💥 Error scanning for nearby users:', error);
+      console.error('Error scanning for nearby users:', error);
     }
-  }, [user, currentLocation]);
+  }, [user]);
+
+  /** Invia la posizione più recente al server e aggiorna la lista. */
+  const pushLocationAndScan = useCallback(async () => {
+    const location = latestLocationRef.current;
+    if (!location || !scanningRef.current) return;
+    const ok = await locationService.updateMyLocation(location);
+    if (ok) lastPushedRef.current = location;
+    await scanForNearbyUsers();
+  }, [scanForNearbyUsers]);
+
+  const teardown = useCallback(async () => {
+    scanningRef.current = false;
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    await locationService.stopLocationTracking();
+    latestLocationRef.current = null;
+    lastPushedRef.current = null;
+  }, []);
 
   const startScanning = useCallback(async () => {
-    if (!user || isScanning || isStarting) {
-      console.log('⏸️ Cannot start scanning:', { user: !!user, isScanning, isStarting });
-      return false;
-    }
+    if (!user || isScanning || isStarting) return false;
 
-    console.log('🚀 Starting proximity scanning...');
     setIsStarting(true);
-
-    // Set a timeout to reset isStarting if the process takes too long
-    startingTimeoutRef.current = setTimeout(() => {
-      console.log('⏰ Starting timeout - resetting isStarting');
-      setIsStarting(false);
-    }, 15000); // 15 second timeout for iOS
-    
     try {
-      // Check current permission status first
-      const currentPermissionStatus = await locationService.checkLocationPermission();
-      console.log('📋 Current permission status:', currentPermissionStatus);
-      
-      let hasPermission = currentPermissionStatus === 'granted';
-      
-      // If permission is not granted, request it
+      let hasPermission = (await locationService.checkLocationPermission()) === 'granted';
       if (!hasPermission) {
-        console.log('🔐 Permission not granted, requesting...');
         hasPermission = await requestLocationPermission();
       }
-      
-      if (!hasPermission) {
-        console.log('❌ Permission denied, cannot start scanning');
-        if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
-        setIsStarting(false);
-        return false;
-      }
+      if (!hasPermission) return false;
 
-      console.log('✅ Permission granted, getting location...');
-      
       // Get current location with retry logic for iOS
       let location: LocationData | null = null;
-      let attempts = 0;
-      const maxAttempts = 3;
-      
-      while (!location && attempts < maxAttempts) {
+      for (let attempt = 1; attempt <= 3 && !location; attempt++) {
         try {
-          attempts++;
-          console.log(`📍 Getting location (attempt ${attempts}/${maxAttempts})...`);
           location = await locationService.getCurrentLocation();
-          console.log('✅ Location obtained:', location);
-        } catch (error: any) {
-          console.error(`❌ Location attempt ${attempts} failed:`, error);
-          if (attempts === maxAttempts) {
-            toast({
-              title: "Errore localizzazione",
-              description: "Impossibile ottenere la tua posizione. Controlla le impostazioni del GPS.",
-              variant: "destructive"
-            });
-            if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
-            setIsStarting(false);
-            return false;
-          }
-          // Wait a bit before retrying
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.error(`Location attempt ${attempt} failed:`, error);
+          if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
 
       if (!location) {
-        console.log('❌ Could not get location after all attempts');
-        if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
-        setIsStarting(false);
+        toast({
+          title: "Errore localizzazione",
+          description: "Impossibile ottenere la tua posizione. Controlla le impostazioni del GPS.",
+          variant: "destructive"
+        });
         return false;
       }
+
+      scanningRef.current = true;
+      latestLocationRef.current = location;
+
+      if (!(await locationService.updateMyLocation(location))) {
+        await teardown();
+        toast({
+          title: "Errore",
+          description: "Impossibile salvare la tua posizione. Riprova.",
+          variant: "destructive"
+        });
+        return false;
+      }
+      lastPushedRef.current = location;
 
       setCurrentLocation(location);
       setIsScanning(true);
+      await scanForNearbyUsers();
 
-      // Start location tracking
-      console.log('📡 Starting location tracking...');
-      const trackingStarted = await locationService.startLocationTracking(user.id);
-      if (!trackingStarted) {
-        console.log('❌ Failed to start location tracking');
-        setIsScanning(false);
-        if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
-        setIsStarting(false);
-        return false;
-      }
-
-      // Initial scan for nearby users
-      await scanForNearbyUsers(location);
+      // Segui gli spostamenti: aggiorna subito il server se ti muovi abbastanza
+      locationService.startWatchingPosition(
+        (loc) => {
+          if (!scanningRef.current) return;
+          latestLocationRef.current = loc;
+          setCurrentLocation(loc);
+          const last = lastPushedRef.current;
+          if (!last || distanceMeters(last, loc) >= MIN_MOVE_METERS) {
+            void pushLocationAndScan();
+          }
+        },
+        (error) => console.error('Watch position error:', error)
+      );
 
       toast({
         title: "Scansione avviata",
         description: "Cerco persone nelle vicinanze. Sarai avvisato quando qualcuno viene trovato.",
       });
-
-      if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
-      setIsStarting(false);
-      console.log('🎉 Scanning started successfully');
       return true;
     } catch (error) {
-      console.error('💥 Error starting proximity scanning:', error);
+      console.error('Error starting proximity scanning:', error);
+      await teardown();
       setIsScanning(false);
-      if (startingTimeoutRef.current) clearTimeout(startingTimeoutRef.current);
-      setIsStarting(false);
       toast({
         title: "Errore",
         description: "Impossibile avviare la scansione di prossimità. Riprova.",
         variant: "destructive"
       });
       return false;
+    } finally {
+      setIsStarting(false);
     }
-  }, [user, isScanning, isStarting, requestLocationPermission, toast, scanForNearbyUsers]);
+  }, [user, isScanning, isStarting, requestLocationPermission, toast, scanForNearbyUsers, pushLocationAndScan, teardown]);
 
   const stopScanning = useCallback(async () => {
-    console.log('🛑 Stopping proximity scanning...');
-    
-    // Clear any pending timeout
-    if (startingTimeoutRef.current) {
-      clearTimeout(startingTimeoutRef.current);
+    const wasScanning = scanningRef.current;
+    await teardown();
+    if (wasScanning) {
+      await locationService.clearMyLocation();
     }
-    
-    // Clear interval
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
-    // Remove channel subscription
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
-    
-    await locationService.stopLocationTracking();
     setIsScanning(false);
     setIsStarting(false);
     setNearbyUsers([]);
     setCurrentLocation(null);
 
-    toast({
-      title: "Scansione interrotta",
-      description: "Non sei più visibile alle persone nelle vicinanze.",
-    });
-  }, [toast]);
+    if (wasScanning) {
+      toast({
+        title: "Scansione interrotta",
+        description: "Non sei più visibile alle persone nelle vicinanze.",
+      });
+    }
+  }, [teardown, toast]);
 
-  // Set up real-time subscription for nearby users
+  // Heartbeat: rinnova la visibilità sul server e aggiorna la lista
   useEffect(() => {
-    if (!isScanning || !user) {
-      // Clean up existing subscriptions when not scanning
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
+    if (!isScanning || !user) return;
+
+    intervalRef.current = setInterval(() => {
+      void pushLocationAndScan();
+    }, HEARTBEAT_MS);
+
+    return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      return;
-    }
-
-    // Only create new subscription if one doesn't exist
-    if (!channelRef.current) {
-      console.log('📡 Creating new Supabase channel subscription');
-      channelRef.current = supabase
-        .channel(`proximity-updates-${user.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'profiles',
-            filter: `is_visible=eq.true`
-          },
-          () => {
-            console.log('📡 Profile change detected, re-scanning...');
-            scanForNearbyUsers();
-          }
-        )
-        .subscribe((status) => {
-          console.log('📡 Subscription status:', status);
-        });
-    }
-
-    // Set up periodic scanning if not already running
-    if (!intervalRef.current) {
-      intervalRef.current = setInterval(() => {
-        console.log('🔄 Periodic scan triggered');
-        scanForNearbyUsers();
-      }, 30000);
-    }
-
-    return () => {
-      // Cleanup will be handled by the main useEffect cleanup
     };
-  }, [isScanning, user, scanForNearbyUsers]);
+  }, [isScanning, user, pushLocationAndScan]);
+
+  // Cleanup on unmount (il server farà comunque scadere la posizione entro 2 minuti)
+  useEffect(() => {
+    return () => {
+      if (scanningRef.current) {
+        void locationService.clearMyLocation();
+      }
+      void teardown();
+    };
+  }, [teardown]);
 
   return {
     isScanning,
